@@ -1,4 +1,5 @@
 require('dotenv').config();
+
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
@@ -10,9 +11,13 @@ const activityRoutes = require('./routes/activity');
 const analyticsRoutes = require('./routes/analytics');
 const userRoutes = require('./routes/users');
 
+// Temporary route for creating admin accounts
+const setupAdminRoutes = require('./routes/setup-admins');
+
 const app = express();
 
 app.use(helmet());
+
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -24,17 +29,19 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || '')
 app.use(
   cors({
     origin(origin, callback) {
-      // Allow same-origin/non-browser requests (no Origin header) and any explicitly configured origin.
       if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
-      callback(new Error('This origin is not allowed to access the SUMAT Eastvicians API.'));
+
+      callback(
+        new Error('This origin is not allowed to access the SUMAT Eastvicians API.')
+      );
     },
     credentials: true
   })
 );
 
-// General API-wide rate limit, on top of the stricter per-route limits in auth/reports.
+// API rate limit
 app.use(
   '/api',
   rateLimit({
@@ -45,24 +52,46 @@ app.use(
   })
 );
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
 
+// Main routes
 app.use('/api/auth', authRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/activity', activityRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/users', userRoutes);
 
-// Multer and validation errors surface here with a clean JSON message instead of a stack trace.
+// Temporary admin account setup
+app.use('/api/setup-admins', setupAdminRoutes);
+
+
+// Error handler
 app.use((err, req, res, next) => {
   if (err) {
     console.error(err);
-    return res.status(err.status || 400).json({ error: err.message || 'Something went wrong.' });
+
+    return res.status(err.status || 400).json({
+      error: err.message || 'Something went wrong.'
+    });
   }
+
   next();
 });
 
-app.use((req, res) => res.status(404).json({ error: 'Not found.' }));
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Not found.'
+  });
+});
+
 
 const port = process.env.PORT || 5050;
-app.listen(port, () => console.log(`SUMAT Eastvicians API listening on port ${port}`));
+
+app.listen(port, () => {
+  console.log(`SUMAT Eastvicians API listening on port ${port}`);
+});
