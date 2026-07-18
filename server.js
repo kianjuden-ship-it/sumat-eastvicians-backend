@@ -11,9 +11,6 @@ const activityRoutes = require('./routes/activity');
 const analyticsRoutes = require('./routes/analytics');
 const userRoutes = require('./routes/users');
 
-// Temporary route for creating admin accounts
-const setupAdminRoutes = require('./routes/setup-admins');
-
 const app = express();
 
 app.use(helmet());
@@ -45,7 +42,7 @@ app.use(
 app.use(
   '/api',
   rateLimit({
-    windowMs: 15 * 60 * 1000,
+    windowMs: 15 * 15 * 1000,
     max: 300,
     standardHeaders: true,
     legacyHeaders: false
@@ -63,9 +60,6 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/activity', activityRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/users', userRoutes);
-
-// Temporary admin account setup
-app.use('/api/setup-admins', setupAdminRoutes);
 
 
 // Error handler
