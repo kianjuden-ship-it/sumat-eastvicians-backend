@@ -1,37 +1,40 @@
-const multer = require('multer');
-const path = require('path');
-const crypto = require('crypto');
+const express = require('express');
+const pool = require('../db/pool');
+const { requireAuth } = require('../middleware/auth');
+const { canListReports, categoryFilterFor } = require('../utils/permissions');
 
-const ALLOWED_EXTENSIONS = new Set([
-  '.jpg', '.jpeg', '.png', '.gif', '.webp',
-  '.mp4', '.mov', '.avi',
-  '.mp3', '.wav', '.m4a',
-  '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.txt'
-]);
+const router = express.Router();
 
-const storage = multer.diskStorage({
-  destination: (req, file, callback) => callback(null, process.env.UPLOAD_DIR || './uploads'),
-  filename: (req, file, callback) => {
-    const safeExtension = path.extname(file.originalname).toLowerCase();
-    const randomName = crypto.randomBytes(20).toString('hex');
-    callback(null, `${randomName}${safeExtension}`);
+// GET /api/analytics/summary - counts only, safe for every role including SSLG (stats-only)
+router.get('/summary', requireAuth, async (req, res) => {
+  const { role } = req.admin;
+  if (!canListReports(role)) {
+    return res.status(403).json({ error: 'Your role does not have access to report statistics.' });
+  }
+
+  const categoryFilter = categoryFilterFor(role);
+  try {
+    const rows = categoryFilter
+      ? (await pool.query('SELECT status, priority FROM reports WHERE category_key = ANY($1)', [categoryFilter])).rows
+      : (await pool.query('SELECT status, priority FROM reports')).rows;
+
+    const summary = {
+      total: rows.length,
+      pending: rows.filter((r) => r.status === 'Pending').length,
+      underReview: rows.filter((r) => r.status === 'Under Review').length,
+      resolved: rows.filter((r) => r.status === 'Resolved' || r.status === 'Closed').length,
+      highPriority: rows.filter((r) => r.priority === 'High').length,
+      byStatus: {}
+    };
+    for (const status of ['Pending', 'Under Review', 'Forwarded', 'Waiting for Student', 'Resolved', 'Closed', 'Rejected']) {
+      summary.byStatus[status] = rows.filter((r) => r.status === status).length;
+    }
+
+    res.json(summary);
+  } catch (error) {
+    console.error('Analytics error', error);
+    res.status(500).json({ error: 'Analytics could not be loaded right now.' });
   }
 });
 
-function fileFilter(req, file, callback) {
-  const extension = path.extname(file.originalname).toLowerCase();
-  if (!ALLOWED_EXTENSIONS.has(extension)) {
-    return callback(new Error('That file type is not accepted as evidence.'));
-  }
-  callback(null, true);
-}
-
-const maxUploadBytes = Number(process.env.MAX_UPLOAD_MB || 25) * 1024 * 1024;
-
-const upload = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: maxUploadBytes, files: 10 }
-});
-
-module.exports = upload;
+module.exports = router;
